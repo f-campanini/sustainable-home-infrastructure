@@ -1,0 +1,223 @@
+---
+- name: Configure home server
+  hosts: homeserver
+  become: true
+
+  vars_files:
+    - secrets.yml
+
+  tasks:
+    - name: Create Home Assistant configuration directory
+      ansible.builtin.file:
+        path: /srv/homeassistant/config
+        state: directory
+        mode: "0755"
+
+    - name: Create Mosquitto configuration directory
+      ansible.builtin.file:
+        path: /srv/mosquitto/config
+        state: directory
+        mode: "0755"
+
+    - name: Create Mosquitto data directory
+      ansible.builtin.file:
+        path: /srv/mosquitto/data
+        state: directory
+        mode: "0755"
+
+    - name: Create InfluxDB data directory
+      ansible.builtin.file:
+        path: /srv/influxdb/data
+        state: directory
+        mode: "0755"
+
+    - name: Create InfluxDB configuration directory
+      ansible.builtin.file:
+        path: /srv/influxdb/config
+        state: directory
+        mode: "0755"
+
+    - name: Create secrets directory
+      ansible.builtin.file:
+        path: /srv/secrets
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create reporting application directory
+      ansible.builtin.file:
+        path: /srv/reporting/app
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create reporting output directory
+      ansible.builtin.file:
+        path: /srv/reporting/output
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install InfluxDB username secret
+      ansible.builtin.copy:
+        content: "{{ influxdb_username }}"
+        dest: /srv/secrets/influxdb_username
+        owner: root
+        group: root
+        mode: "0644"
+      no_log: true
+
+    - name: Install InfluxDB password secret
+      ansible.builtin.copy:
+        content: "{{ influxdb_password }}"
+        dest: /srv/secrets/influxdb_password
+        owner: root
+        group: root
+        mode: "0644"
+      no_log: true
+
+    - name: Check whether InfluxDB token exists
+      ansible.builtin.stat:
+        path: /srv/secrets/influxdb_token
+      register: influxdb_token_file
+
+    - name: Generate InfluxDB token
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - rand
+          - -hex
+          - "32"
+      register: generated_influxdb_token
+      changed_when: true
+      no_log: true
+      when: not influxdb_token_file.stat.exists
+
+    - name: Save generated InfluxDB token
+      ansible.builtin.copy:
+        content: "{{ generated_influxdb_token.stdout }}"
+        dest: /srv/secrets/influxdb_token
+        owner: root
+        group: root
+        mode: "0644"
+      no_log: true
+      when: not influxdb_token_file.stat.exists
+
+    - name: Ensure InfluxDB token permissions
+      ansible.builtin.file:
+        path: /srv/secrets/influxdb_token
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install Mosquitto configuration
+      ansible.builtin.template:
+        src: mosquitto.conf.j2
+        dest: /srv/mosquitto/config/mosquitto.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Check whether Mosquitto password file exists
+      ansible.builtin.stat:
+        path: /srv/mosquitto/config/password_file
+      register: mosquitto_password_file
+
+    - name: Create Mosquitto password file
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --rm
+          - --user
+          - "0:0"
+          - -v
+          - /srv/mosquitto/config:/mosquitto/config
+          - eclipse-mosquitto:2
+          - mosquitto_passwd
+          - -b
+          - -c
+          - /mosquitto/config/password_file
+          - "{{ mqtt_username }}"
+          - "{{ mqtt_password }}"
+      no_log: true
+      when: not mosquitto_password_file.stat.exists
+
+    - name: Update Mosquitto password
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --rm
+          - --user
+          - "0:0"
+          - -v
+          - /srv/mosquitto/config:/mosquitto/config
+          - eclipse-mosquitto:2
+          - mosquitto_passwd
+          - -b
+          - /mosquitto/config/password_file
+          - "{{ mqtt_username }}"
+          - "{{ mqtt_password }}"
+      no_log: true
+      when: mosquitto_password_file.stat.exists
+
+    - name: Set Mosquitto password file permissions
+      ansible.builtin.file:
+        path: /srv/mosquitto/config/password_file
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Copy reporting application
+      ansible.builtin.copy:
+        src: ../reporting/
+        dest: /srv/reporting/app/
+        owner: root
+        group: root
+        directory_mode: "0755"
+
+    - name: Ensure reporting entrypoint is executable
+      ansible.builtin.file:
+        path: /srv/reporting/app/entrypoint.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install Docker Compose configuration
+      ansible.builtin.template:
+        src: compose.yml.j2
+        dest: /srv/compose.yml
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Build reporting image
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - /srv/compose.yml
+          - build
+          - reporting
+      register: reporting_build
+      changed_when: true
+
+    - name: Start infrastructure containers
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - /srv/compose.yml
+          - up
+          - -d
+          - --pull
+          - always
+          - --remove-orphans
+      register: docker_compose_up
+      changed_when: true

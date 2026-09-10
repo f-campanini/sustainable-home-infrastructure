@@ -1,0 +1,92 @@
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: unless-stopped
+    network_mode: host
+
+    environment:
+      TZ: Europe/Rome
+
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+    volumes:
+      - /srv/homeassistant/config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+
+  mosquitto:
+    container_name: mosquitto
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+
+    ports:
+      - "1883:1883"
+
+    volumes:
+      - /srv/mosquitto/config:/mosquitto/config
+      - /srv/mosquitto/data:/mosquitto/data
+
+  influxdb:
+    container_name: influxdb
+    image: influxdb:2.9
+    restart: unless-stopped
+
+    ports:
+      - "8086:8086"
+
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME_FILE: /run/secrets/influxdb_username
+      DOCKER_INFLUXDB_INIT_PASSWORD_FILE: /run/secrets/influxdb_password
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN_FILE: /run/secrets/influxdb_token
+      DOCKER_INFLUXDB_INIT_ORG: home
+      DOCKER_INFLUXDB_INIT_BUCKET: homeassistant
+
+    secrets:
+      - influxdb_username
+      - influxdb_password
+      - influxdb_token
+
+    volumes:
+      - /srv/influxdb/data:/var/lib/influxdb2
+      - /srv/influxdb/config:/etc/influxdb2
+
+  reporting:
+    container_name: reporting
+    build:
+      context: /srv/reporting/app
+    image: home-reporting:latest
+    restart: unless-stopped
+
+    ports:
+      - "8090:8080"
+
+    environment:
+      TZ: Europe/Rome
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_ORG: home
+      INFLUXDB_BUCKET: homeassistant
+      INFLUXDB_TOKEN_FILE: /run/secrets/influxdb_token
+      REPORT_INTERVAL_MINUTES: "15"
+
+    secrets:
+      - influxdb_token
+
+    volumes:
+      - /srv/reporting/output:/data/reports
+
+    depends_on:
+      - influxdb
+
+secrets:
+  influxdb_username:
+    file: /srv/secrets/influxdb_username
+
+  influxdb_password:
+    file: /srv/secrets/influxdb_password
+
+  influxdb_token:
+    file: /srv/secrets/influxdb_token

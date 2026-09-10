@@ -1,0 +1,21 @@
+# Actual home inventory
+ansible/inventory/hosts.yml
+
+# Secrets
+.env
+.env.*
+secrets.yml
+*.vault-password
+.vault_pass
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Editor/OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store

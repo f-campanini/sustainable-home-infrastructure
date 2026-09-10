@@ -1,0 +1,6 @@
+Flask>=3.1,<4
+gunicorn>=23,<24
+APScheduler>=3.11,<4
+influxdb-client>=1.49,<2
+pandas>=2.3,<3
+matplotlib>=3.10,<4
