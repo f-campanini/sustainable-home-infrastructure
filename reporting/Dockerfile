@@ -13,13 +13,15 @@ RUN pip install \
     --disable-pip-version-check \
     -r requirements.txt
 
-COPY app.py .
-COPY scheduler.py .
-COPY influx.py .
-COPY entrypoint.sh .
+COPY *.py ./
+COPY entrypoint.sh ./
+COPY templates ./templates
 
 RUN chmod +x /app/entrypoint.sh \
-    && mkdir -p /data/reports
+    && mkdir -p \
+        /data/reports/generated \
+        /data/reports/publish_queue \
+        /data/reports/published
 
 EXPOSE 8080
 

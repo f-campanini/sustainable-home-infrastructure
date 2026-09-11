@@ -151,7 +151,7 @@ A plug-level meter can measure instantaneous watts, daily kWh, monthly kWh and a
 
 The Python reporting service has modest hardware requirements. Its main components are Flask, Gunicorn, APScheduler, pandas, matplotlib and the InfluxDB client.
 
-Static report generation typically creates short CPU bursts rather than continuous heavy utilization.
+Historical queries and static chart generation typically create short CPU bursts rather than continuous heavy utilization. Report artifacts can be kept on local storage with automated retention, while artifacts explicitly queued for publication should be protected from automatic cleanup.
 
 ## Storage Architecture
 

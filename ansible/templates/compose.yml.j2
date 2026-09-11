@@ -69,8 +69,10 @@ services:
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_ORG: home
       INFLUXDB_BUCKET: homeassistant
+      INFLUXDB_AUDIT_BUCKET: reporting_audit
       INFLUXDB_TOKEN_FILE: /run/secrets/influxdb_token
       REPORT_INTERVAL_MINUTES: "15"
+      REPORT_STORAGE_ROOT: /data/reports
 
     secrets:
       - influxdb_token

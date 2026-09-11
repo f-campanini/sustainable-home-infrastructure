@@ -1,0 +1,7 @@
+[Unit]
+Description=Clean old reporting artifacts
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/reporting-cleanup

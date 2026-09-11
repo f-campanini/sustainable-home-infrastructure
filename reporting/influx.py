@@ -18,13 +18,18 @@ INFLUXDB_BUCKET = os.getenv(
     "homeassistant",
 )
 
+INFLUXDB_AUDIT_BUCKET = os.getenv(
+    "INFLUXDB_AUDIT_BUCKET",
+    "reporting_audit",
+)
+
 INFLUXDB_TOKEN_FILE = os.getenv(
     "INFLUXDB_TOKEN_FILE",
     "/run/secrets/influxdb_token",
 )
 
 
-def read_token():
+def get_token():
     with open(
         INFLUXDB_TOKEN_FILE,
         "r",
@@ -36,16 +41,23 @@ def read_token():
 def get_client():
     return InfluxDBClient(
         url=INFLUXDB_URL,
-        token=read_token(),
+        token=get_token(),
         org=INFLUXDB_ORG,
     )
 
 
 def get_health():
-    with get_client() as client:
-        health = client.health()
+    try:
+        with get_client() as client:
+            health = client.health()
 
         return {
             "status": health.status,
-            "version": health.version,
+            "message": health.message,
+        }
+
+    except Exception as error:
+        return {
+            "status": "fail",
+            "message": str(error),
         }

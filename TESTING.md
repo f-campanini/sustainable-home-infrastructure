@@ -237,7 +237,81 @@ Open:
 http://SERVER_IP:8090/
 ```
 
-The reporting landing page should load.
+The reporting landing page and Historical Explorer should load.
+
+Verify that the measurement selector loads available entities and test a known-good power sensor with combinations such as:
+
+```text
+24h / raw / line
+24h / 15m / average / line
+24h / 15m / minimum / line
+24h / 15m / maximum / line
+24h / 15m / sum / line
+48h / 1h / average / line
+7d / 1h / average / line
+```
+
+Also test at least one bar chart and more than one entity.
+
+A successful query should render a PNG chart and display its query identifier.
+
+### Historical Data Validation
+
+Historical queries must filter the Home Assistant numeric field before applying InfluxDB aggregation:
+
+```flux
+|> filter(fn: (r) => r["_field"] == "value")
+```
+
+This is important because a Home Assistant measurement can also contain string fields such as:
+
+```text
+device_class_str
+friendly_name_str
+state_class_str
+```
+
+Without the numeric-field filter, InfluxDB aggregate functions such as `mean`, `min` or `max` can fail with string cursor or schema-collision errors.
+
+Test a period for which a sensor has no data. The web interface should show a human-readable message rather than a generic 400 or 500 error page.
+
+During development, the error display may also contain a collapsible `Technical details` section with the exception traceback.
+
+### Reporting Audit
+
+Verify that the audit bucket exists:
+
+```text
+reporting_audit
+```
+
+After generating a chart, query the audit bucket and confirm that a `query_audit` record is created with a request ID, status, query characteristics, result point count and execution time.
+
+Audit records must not contain credentials, API tokens or raw sensor values.
+
+### Reporting Artifact Cleanup
+
+The report storage root should contain:
+
+```text
+generated/
+publish_queue/
+published/
+```
+
+The cleanup timer must remove only expired files from `generated/` and `published/`.
+
+It must never automatically delete files from:
+
+```text
+publish_queue/
+```
+
+Check the timer with:
+
+```bash
+ansible homeserver -b -a "systemctl status reporting-cleanup.timer --no-pager"
+```
 
 ## Scheduler Test
 
@@ -362,6 +436,14 @@ ansible homeserver -b -a "docker logs --tail 100 frigate"
 - [ ] InfluxDB queries return current measurements
 - [ ] reporting `/health` succeeds
 - [ ] Flask web application responds
+- [ ] Historical Explorer loads available entities
+- [ ] raw historical chart generation succeeds
+- [ ] aggregated historical chart generation succeeds
+- [ ] line and bar chart generation succeeds
+- [ ] missing historical data produces a human-readable message
+- [ ] query audit records are written to `reporting_audit`
+- [ ] reporting cleanup timer is active
+- [ ] `publish_queue` is excluded from automatic cleanup
 - [ ] APScheduler runs scheduled jobs
 - [ ] Frigate live streams work
 - [ ] Frigate recordings are created

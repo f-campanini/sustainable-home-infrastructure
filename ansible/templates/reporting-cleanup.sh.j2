@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT="/srv/reporting/output"
+GENERATED="${ROOT}/generated"
+PUBLISH_QUEUE="${ROOT}/publish_queue"
+PUBLISHED="${ROOT}/published"
+
+mkdir -p \
+  "${GENERATED}" \
+  "${PUBLISH_QUEUE}" \
+  "${PUBLISHED}"
+
+find "${GENERATED}" \
+  -type f \
+  -mtime +{{ reporting_generated_retention_days }} \
+  -delete
+
+find "${PUBLISHED}" \
+  -type f \
+  -mtime +{{ reporting_published_retention_days }} \
+  -delete
+
+exit 0

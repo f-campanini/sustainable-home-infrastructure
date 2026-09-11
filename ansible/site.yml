@@ -6,6 +6,10 @@
   vars_files:
     - secrets.yml
 
+  vars:
+    reporting_generated_retention_days: 30
+    reporting_published_retention_days: 7
+
   tasks:
     - name: Create Home Assistant configuration directory
       ansible.builtin.file:
@@ -60,6 +64,61 @@
         owner: root
         group: root
         mode: "0755"
+
+    - name: Create generated reporting directory
+      ansible.builtin.file:
+        path: /srv/reporting/output/generated
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create reporting publication queue directory
+      ansible.builtin.file:
+        path: /srv/reporting/output/publish_queue
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create published reporting directory
+      ansible.builtin.file:
+        path: /srv/reporting/output/published
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install reporting cleanup script
+      ansible.builtin.template:
+        src: reporting-cleanup.sh.j2
+        dest: /usr/local/sbin/reporting-cleanup
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install reporting cleanup service
+      ansible.builtin.template:
+        src: reporting-cleanup.service.j2
+        dest: /etc/systemd/system/reporting-cleanup.service
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install reporting cleanup timer
+      ansible.builtin.template:
+        src: reporting-cleanup.timer.j2
+        dest: /etc/systemd/system/reporting-cleanup.timer
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Enable and start reporting cleanup timer
+      ansible.builtin.systemd:
+        name: reporting-cleanup.timer
+        enabled: true
+        state: started
+        daemon_reload: true
 
     - name: Install InfluxDB username secret
       ansible.builtin.copy:
@@ -204,7 +263,6 @@
           - /srv/compose.yml
           - build
           - reporting
-      register: reporting_build
       changed_when: true
 
     - name: Start infrastructure containers
@@ -219,5 +277,33 @@
           - --pull
           - always
           - --remove-orphans
-      register: docker_compose_up
       changed_when: true
+
+    - name: Ensure reporting audit bucket exists
+      ansible.builtin.shell: |
+        set -eu
+
+        if docker exec influxdb sh -c '
+          influx bucket list \
+            --host http://localhost:8086 \
+            --org home \
+            --token "$(cat /run/secrets/influxdb_token)" \
+            --name reporting_audit \
+            --json
+        ' | grep -Eq '"name"[[:space:]]*:[[:space:]]*"reporting_audit"'
+        then
+          echo "EXISTS"
+        else
+          docker exec influxdb sh -c '
+            influx bucket create \
+              --host http://localhost:8086 \
+              --org home \
+              --token "$(cat /run/secrets/influxdb_token)" \
+              --name reporting_audit
+          '
+          echo "CREATED"
+        fi
+      args:
+        executable: /bin/bash
+      register: reporting_audit_bucket
+      changed_when: "'CREATED' in reporting_audit_bucket.stdout"

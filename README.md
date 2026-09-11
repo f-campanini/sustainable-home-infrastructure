@@ -98,15 +98,24 @@ home-infrastructure/
 │   │   └── hosts.example.yml
 │   ├── templates/
 │   │   ├── compose.yml.j2
-│   │   └── mosquitto.conf.j2
+│   │   ├── mosquitto.conf.j2
+│   │   ├── reporting-cleanup.sh.j2
+│   │   ├── reporting-cleanup.service.j2
+│   │   └── reporting-cleanup.timer.j2
 │   ├── secrets.yml
 │   └── site.yml
 ├── reporting/
+│   ├── templates/
+│   │   └── index.html
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── entrypoint.sh
 │   ├── app.py
+│   ├── artifact.py
+│   ├── audit.py
+│   ├── charts.py
 │   ├── influx.py
+│   ├── query_service.py
 │   └── scheduler.py
 ├── README.md
 ├── TESTING.md
@@ -376,7 +385,7 @@ Home Assistant writes historical measurements into InfluxDB.
 
 The reporting service is a continuously running Docker container.
 
-It contains a Gunicorn-served Flask application and an APScheduler process for periodic report generation. Both use InfluxDB as the data source.
+It contains a Gunicorn-served Flask application and an APScheduler process. InfluxDB is the historical data source, while pandas and matplotlib are used for validation, processing and server-side chart generation.
 
 The web interface is available at:
 
@@ -392,11 +401,68 @@ http://SERVER_IP:8090/health
 
 A healthy response confirms that the application can communicate with InfluxDB.
 
-Generated charts and reports are stored under:
+### Historical Explorer
+
+The web interface includes a constrained Historical Explorer rather than exposing arbitrary Flux queries.
+
+The current explorer supports:
+
+- measurements such as power, energy, voltage and current
+- selectable Home Assistant entities
+- periods from 24 hours to 90 days
+- raw, 5-minute, 15-minute, hourly and daily aggregation
+- mean, minimum, maximum and sum functions
+- line and bar charts
+
+Historical queries explicitly select the numeric `value` field before aggregation. This prevents Home Assistant string metadata fields such as friendly name, device class and state class from being passed to numeric InfluxDB aggregate functions.
+
+The application validates query parameters and historical data before rendering a chart. Expected conditions such as missing historical data or non-numeric values are presented as human-readable messages instead of generic HTTP error pages.
+
+During development, technical exception details can also be displayed in a collapsible section of the web interface to simplify troubleshooting. This interface is intended for trusted LAN or VPN access only.
+
+### Query Audit
+
+Historical Explorer requests are audited separately from sensor measurements.
+
+Sensor data is stored in:
+
+```text
+homeassistant
+```
+
+Query audit records are stored in:
+
+```text
+reporting_audit
+```
+
+Audit records include a request identifier, query characteristics, result size, execution time and status. Credentials, API tokens and raw sensor data must not be written to the audit log.
+
+### Report Artifact Storage
+
+Generated report artifacts are stored under:
 
 ```text
 /srv/reporting/output
 ```
+
+The storage lifecycle is divided into:
+
+```text
+generated/
+publish_queue/
+published/
+```
+
+`generated/` contains normal generated artifacts and can be cleaned automatically after the configured retention period.
+
+`publish_queue/` contains artifacts explicitly selected for publication and must never be removed by the automatic cleanup job.
+
+`published/` contains successfully published artifacts and can use a shorter retention period.
+
+The cleanup process is implemented as a host systemd timer deployed through Ansible.
+
+Future publication can use object storage, but public repository configuration must remain generic and must not contain private bucket names, credentials, domains or destination details.
 
 The reporting application uses `influxdb-client`, `pandas`, `matplotlib`, Flask, Gunicorn and APScheduler.
 
@@ -472,7 +538,7 @@ Each boundary should be tested independently.
 
 ## Planned Work
 
-Future work includes whole-house electricity monitoring, solar production monitoring, grid import/export measurement, automated energy reports, charging-cost analysis, server performance monitoring, NAS storage, SMART monitoring, UPS integration, secure VPN remote access, improved Ansible idempotency and integration of Frigate deployment into the main Ansible repository.
+Future work includes whole-house electricity monitoring, solar production monitoring, grid import/export measurement, scheduled energy reports, charging-cost analysis, server performance monitoring, NAS storage, SMART monitoring, UPS integration, secure VPN remote access, improved Ansible idempotency, optional object-storage publication of selected report artifacts and integration of Frigate deployment into the main Ansible repository.
 
 ## License
 
