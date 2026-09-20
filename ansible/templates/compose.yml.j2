@@ -72,6 +72,7 @@ services:
       INFLUXDB_AUDIT_BUCKET: reporting_audit
       INFLUXDB_TOKEN_FILE: /run/secrets/influxdb_token
       REPORT_INTERVAL_MINUTES: "15"
+      REPORT_SCHEDULES: {{ reporting_schedules | default(reporting_default_schedules) | to_json | to_json }}
       REPORT_STORAGE_ROOT: /data/reports
 
     secrets:

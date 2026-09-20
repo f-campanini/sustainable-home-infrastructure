@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from influxdb_client import Point
+from influxdb_client.client.write_api import SYNCHRONOUS
 
 from influx import (
     INFLUXDB_AUDIT_BUCKET,
@@ -61,9 +62,8 @@ def write_query_audit(
     )
 
     with get_client() as client:
-        write_api = client.write_api()
-
-        write_api.write(
-            bucket=INFLUXDB_AUDIT_BUCKET,
-            record=point,
-        )
+        with client.write_api(write_options=SYNCHRONOUS) as write_api:
+            write_api.write(
+                bucket=INFLUXDB_AUDIT_BUCKET,
+                record=point,
+            )

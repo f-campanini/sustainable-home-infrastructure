@@ -5,8 +5,15 @@ ansible/inventory/hosts.yml
 .env
 .env.*
 secrets.yml
+ansible/frigate.vault.yml
 *.vault-password
 .vault_pass
+
+# Python runtime and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
 
 # Terraform
 .terraform/

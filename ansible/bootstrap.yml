@@ -1,0 +1,90 @@
+---
+- name: Bootstrap the home server through Ansible
+  hosts: homeserver
+  become: true
+
+  pre_tasks:
+    - name: Check supported bootstrap host and account
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Ubuntu'
+          - ansible_distribution_version in ['24.04', '26.04']
+          - ansible_user is defined
+          - ansible_user is match('^[a-z_][a-z0-9_-]*[$]?$')
+        fail_msg: Bootstrap requires Ubuntu 24.04/26.04 and an existing SSH account with sudo access.
+
+    - name: Read the control machine public key
+      ansible.builtin.set_fact:
+        bootstrap_key: "{{ lookup('file', bootstrap_public_key_file | default(lookup('env', 'HOME') + '/.ssh/id_ed25519.pub')) }}"
+      no_log: true
+
+    - name: Reject private keys and malformed public-key input
+      ansible.builtin.assert:
+        that:
+          - bootstrap_key is match('^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp[0-9]+) [A-Za-z0-9+/=]+( .*)?$')
+          - "'PRIVATE KEY' not in bootstrap_key"
+      no_log: true
+
+    - name: Check for an existing Docker executable
+      ansible.builtin.shell: command -v docker
+      register: bootstrap_docker
+      changed_when: false
+      failed_when: bootstrap_docker.rc not in [0, 1]
+      check_mode: false
+
+    - name: Check an existing Compose plugin
+      ansible.builtin.command:
+        argv: [docker, compose, version]
+      changed_when: false
+      check_mode: false
+      when: bootstrap_docker.rc == 0
+      # Fail before changing access configuration if the existing Docker setup
+      # is incomplete. Do not mix Ubuntu and Docker CE packages automatically.
+
+  tasks:
+    - name: Install the SSH public key without removing existing keys
+      ansible.posix.authorized_key:
+        user: "{{ ansible_user }}"
+        key: "{{ bootstrap_key }}"
+        state: present
+        exclusive: false
+        manage_dir: true
+      diff: false
+
+    - name: Manage the Ansible sudo policy
+      ansible.builtin.template:
+        src: ansible-sudoers.j2
+        dest: /etc/sudoers.d/ansible
+        owner: root
+        group: root
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Install Docker and Compose on a fresh server
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      when: bootstrap_docker.rc != 0
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+      when: not ansible_check_mode or bootstrap_docker.rc == 0
+
+    - name: Verify Docker daemon access
+      ansible.builtin.command:
+        argv: [docker, info]
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Verify Compose is available
+      ansible.builtin.command:
+        argv: [docker, compose, version]
+      changed_when: false
+      when: not ansible_check_mode

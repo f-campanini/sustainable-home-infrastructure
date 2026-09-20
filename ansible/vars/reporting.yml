@@ -1,0 +1,13 @@
+---
+# Override reporting_schedules in private inventory to select sensors or times.
+# An empty entities list discovers all entities of this measurement at each run.
+reporting_default_schedules:
+  - name: daily_power
+    hour: 0
+    minute: 5
+    measurement: W
+    entities: []
+    range_name: 24h
+    aggregation: 15m
+    function: mean
+    chart_type: line

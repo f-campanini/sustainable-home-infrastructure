@@ -1,5 +1,6 @@
 import os
 import shutil
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,8 +44,21 @@ def save_png(image_stream, report_id=None):
 
     image_stream.seek(0)
 
-    with destination.open("wb") as file:
-        shutil.copyfileobj(image_stream, file)
+    temporary = None
+    try:
+        # Use the same filesystem so publication is an atomic rename. Interrupted
+        # writes cannot expose a partially written file with a .png extension.
+        with tempfile.NamedTemporaryFile(
+            dir=GENERATED_DIR, prefix=".report-", suffix=".tmp", delete=False,
+        ) as file:
+            temporary = Path(file.name)
+            shutil.copyfileobj(image_stream, file)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
     image_stream.seek(0)
 

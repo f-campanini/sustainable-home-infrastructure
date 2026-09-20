@@ -4,8 +4,10 @@ import signal
 import sys
 
 from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.executors.pool import ThreadPoolExecutor
 
 from influx import get_health
+from scheduled_reports import load_schedules, register_report_jobs
 
 
 logging.basicConfig(
@@ -23,7 +25,9 @@ INTERVAL_MINUTES = int(
 )
 
 scheduler = BlockingScheduler(
-    timezone="Europe/Rome"
+    timezone=os.getenv("TZ", "Europe/Rome"),
+    # Matplotlib rendering is serialized within the scheduler process.
+    executors={"reports": ThreadPoolExecutor(max_workers=1)},
 )
 
 
@@ -32,9 +36,9 @@ def scheduled_job():
         health = get_health()
 
         logger.info(
-            "InfluxDB health: status=%s version=%s",
+            "InfluxDB health: status=%s message=%s",
             health["status"],
-            health["version"],
+            health["message"],
         )
 
     except Exception:
@@ -76,6 +80,11 @@ scheduler.add_job(
 
 
 if __name__ == "__main__":
+    register_report_jobs(
+        scheduler,
+        load_schedules(os.getenv("REPORT_SCHEDULES", "[]")),
+    )
+
     logger.info(
         "Starting scheduler with interval=%s minutes",
         INTERVAL_MINUTES,

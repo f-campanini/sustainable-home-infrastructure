@@ -1,0 +1,18 @@
+services:
+  frigate:
+    container_name: frigate
+    image: {{ frigate_image | to_json }}
+    privileged: {{ frigate_privileged | bool | lower }}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    shm_size: {{ frigate_shm_size | to_json }}
+    devices: {{ frigate_devices | to_json }}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /srv/frigate/config:/config
+      - /srv/frigate/media:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports: {{ frigate_ports | to_json }}

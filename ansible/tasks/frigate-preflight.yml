@@ -1,0 +1,45 @@
+---
+- name: Check for the private Frigate Vault file before deployment
+  ansible.builtin.stat:
+    path: "{{ frigate_secrets_file }}"
+    get_checksum: false
+  delegate_to: localhost
+  become: false
+  register: frigate_vault_file
+
+- name: Require the private Frigate configuration
+  ansible.builtin.assert:
+    that:
+      - frigate_vault_file.stat.exists
+      - frigate_vault_file.stat.isreg | default(false)
+    fail_msg: >-
+      Create the encrypted ansible/frigate.vault.yml described in README.md
+      before deploying. No server configuration has been changed by this play.
+
+- name: Read the encrypted Frigate variables on the control machine
+  ansible.builtin.slurp:
+    src: "{{ frigate_secrets_file }}"
+  delegate_to: localhost
+  become: false
+  register: frigate_vault_contents
+  no_log: true
+
+- name: Require an encrypted private Frigate configuration
+  ansible.builtin.assert:
+    that:
+      - (frigate_vault_contents.content | b64decode).startswith('$ANSIBLE_VAULT;')
+    fail_msg: Encrypt frigate.vault.yml with Ansible Vault before deploying.
+  no_log: true
+
+- name: Load private Frigate configuration
+  ansible.builtin.include_vars:
+    file: "{{ frigate_secrets_file }}"
+  no_log: true
+
+- name: Check required Frigate configuration
+  ansible.builtin.assert:
+    that:
+      - frigate_config is mapping
+      - frigate_config.cameras is mapping
+      - frigate_config.cameras | length > 0
+  no_log: true

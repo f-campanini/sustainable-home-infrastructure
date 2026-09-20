@@ -5,12 +5,75 @@
 
   vars_files:
     - secrets.yml
+    - vars/reporting.yml
+    - vars/frigate.yml
 
   vars:
     reporting_generated_retention_days: 30
     reporting_published_retention_days: 7
 
+  pre_tasks:
+    - name: Validate Frigate prerequisites before changing the main stack
+      ansible.builtin.import_tasks: tasks/frigate-preflight.yml
+
   tasks:
+    - name: Install Tor
+      ansible.builtin.apt:
+        name: tor
+        state: present
+        update_cache: true
+
+    - name: Enable and start Tor
+      ansible.builtin.systemd:
+        name: tor
+        enabled: true
+        state: started
+
+    - name: Install Tor configuration
+      ansible.builtin.template:
+        src: torrc.j2
+        dest: /etc/tor/torrc
+        owner: root
+        group: root
+        mode: "0644"
+        validate: "tor --verify-config --User debian-tor --DataDirectory /var/lib/tor -f %s"
+      notify: Restart Tor
+
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+
+    - name: Install Frigate Onion Nginx configuration
+      ansible.builtin.template:
+        src: frigate-onion-nginx.conf.j2
+        dest: /etc/nginx/sites-available/frigate-onion
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Nginx
+
+    - name: Enable Frigate Onion Nginx configuration
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/frigate-onion
+        dest: /etc/nginx/sites-enabled/frigate-onion
+        state: link
+      notify: Restart Nginx
+
+    - name: Disable default Nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Restart Nginx
+
+    - name: Validate Nginx configuration
+      ansible.builtin.command:
+        argv:
+          - nginx
+          - -t
+      changed_when: false
+
     - name: Create Home Assistant configuration directory
       ansible.builtin.file:
         path: /srv/homeassistant/config
@@ -21,7 +84,9 @@
       ansible.builtin.file:
         path: /srv/mosquitto/config
         state: directory
-        mode: "0755"
+        owner: root
+        group: "{{ mosquitto_container_gid | default('1883') }}"
+        mode: "0750"
 
     - name: Create Mosquitto data directory
       ansible.builtin.file:
@@ -47,7 +112,7 @@
         state: directory
         owner: root
         group: root
-        mode: "0755"
+        mode: "0700"
 
     - name: Create reporting application directory
       ansible.builtin.file:
@@ -125,8 +190,8 @@
         content: "{{ influxdb_username }}"
         dest: /srv/secrets/influxdb_username
         owner: root
-        group: root
-        mode: "0644"
+        group: "{{ influxdb_container_gid | default('1000') }}"
+        mode: "0640"
       no_log: true
 
     - name: Install InfluxDB password secret
@@ -134,8 +199,8 @@
         content: "{{ influxdb_password }}"
         dest: /srv/secrets/influxdb_password
         owner: root
-        group: root
-        mode: "0644"
+        group: "{{ influxdb_container_gid | default('1000') }}"
+        mode: "0640"
       no_log: true
 
     - name: Check whether InfluxDB token exists
@@ -160,8 +225,8 @@
         content: "{{ generated_influxdb_token.stdout }}"
         dest: /srv/secrets/influxdb_token
         owner: root
-        group: root
-        mode: "0644"
+        group: "{{ influxdb_container_gid | default('1000') }}"
+        mode: "0640"
       no_log: true
       when: not influxdb_token_file.stat.exists
 
@@ -169,8 +234,8 @@
       ansible.builtin.file:
         path: /srv/secrets/influxdb_token
         owner: root
-        group: root
-        mode: "0644"
+        group: "{{ influxdb_container_gid | default('1000') }}"
+        mode: "0640"
 
     - name: Install Mosquitto configuration
       ansible.builtin.template:
@@ -228,8 +293,8 @@
       ansible.builtin.file:
         path: /srv/mosquitto/config/password_file
         owner: root
-        group: root
-        mode: "0644"
+        group: "{{ mosquitto_container_gid | default('1883') }}"
+        mode: "0640"
 
     - name: Copy reporting application
       ansible.builtin.copy:
@@ -307,3 +372,18 @@
         executable: /bin/bash
       register: reporting_audit_bucket
       changed_when: "'CREATED' in reporting_audit_bucket.stdout"
+
+  handlers:
+    - name: Restart Tor
+      ansible.builtin.systemd:
+        name: tor
+        state: restarted
+
+    - name: Restart Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+        enabled: true
+
+- name: Deploy the Frigate CCTV stack
+  ansible.builtin.import_playbook: frigate.yml

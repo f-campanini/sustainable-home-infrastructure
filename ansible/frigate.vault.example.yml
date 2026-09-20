@@ -1,0 +1,20 @@
+---
+# Example only. Put the complete private configuration in frigate.vault.yml
+# using ansible-vault create/edit; never put real camera details in this file.
+# Preserve camera identifiers from an existing installation in the private Vault.
+frigate_config:
+  mqtt:
+    enabled: false
+  record:
+    enabled: true
+    continuous:
+      days: 2
+  cameras:
+    camera_1:
+      enabled: true
+      ffmpeg:
+        inputs:
+          - path: rtsp://USER:PASSWORD@CAMERA_HOST:554/STREAM_PATH
+            roles:
+              - detect
+              - record

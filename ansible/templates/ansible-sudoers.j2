@@ -1,0 +1,2 @@
+# Managed by Ansible. Keep server access policy in the bootstrap playbook.
+{{ ansible_user }} ALL=(ALL) {{ 'NOPASSWD: ' if bootstrap_passwordless_sudo | default(true) | bool else '' }}ALL

@@ -1,0 +1,15 @@
+---
+# Keep the existing project and persistent paths when adopting a running instance.
+frigate_secrets_file: "{{ playbook_dir }}/frigate.vault.yml"
+frigate_image: ghcr.io/blakeblackshear/frigate:stable
+# These runtime settings preserve the existing deployment. Review privilege
+# reduction separately from adoption so camera access is not changed implicitly.
+frigate_privileged: true
+frigate_shm_size: 512mb
+frigate_devices:
+  - /dev/dri/renderD128:/dev/dri/renderD128
+frigate_ports:
+  - "8971:8971"
+  - "8554:8554"
+  - "8555:8555/tcp"
+  - "8555:8555/udp"

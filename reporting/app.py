@@ -8,6 +8,7 @@ from flask import (
     send_file,
 )
 
+from artifact import save_png
 from audit import (
     QueryTimer,
     new_request_id,
@@ -27,6 +28,17 @@ from query_service import (
 
 
 app = Flask(__name__)
+
+
+def record_query_audit(**fields):
+    """Audit availability must not replace a chart or its diagnostic response."""
+    try:
+        write_query_audit(**fields)
+    except Exception:
+        # Avoid logging exception text that may include sensitive client details.
+        app.logger.warning(
+            "Query audit failed request_id=%s", fields["request_id"],
+        )
 
 
 @app.route("/")
@@ -113,7 +125,9 @@ def chart():
                 ),
             )
 
-        write_query_audit(
+            save_png(image, report_id=request_id)
+
+        record_query_audit(
             request_id=request_id,
             status="success",
             result_points=len(data),
@@ -135,7 +149,7 @@ def chart():
     except QueryValidationError as error:
         details = traceback.format_exc()
 
-        write_query_audit(
+        record_query_audit(
             request_id=request_id,
             status="validation_error",
             error_message=str(error),
@@ -152,7 +166,7 @@ def chart():
     except (NoDataError, NonNumericDataError) as error:
         details = traceback.format_exc()
 
-        write_query_audit(
+        record_query_audit(
             request_id=request_id,
             status="no_data",
             error_message=str(error),
@@ -169,7 +183,7 @@ def chart():
     except Exception as error:
         details = traceback.format_exc()
 
-        write_query_audit(
+        record_query_audit(
             request_id=request_id,
             status="error",
             error_message=str(error),
